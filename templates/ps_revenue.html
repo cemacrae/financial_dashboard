@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Financial Dashboard — P/S &amp; Revenue</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Financial Dashboard</h1>
+
+    <form method="GET" action="/ps-revenue">
+        <label for="symbols">Enter stock symbols (comma-separated):</label>
+        <input
+            type="text"
+            id="symbols"
+            name="symbols"
+            value="{{ symbols_input }}"
+            placeholder="e.g. AAPL, MSFT, TSLA"
+        >
+        <button type="submit">Compare</button>
+    </form>
+
+    <div class="nav-tabs">
+        <a href="/?symbols={{ symbols_input }}" class="tab-btn">P/E &amp; EPS</a>
+        <a href="/ps-revenue?symbols={{ symbols_input }}" class="tab-btn active">P/S &amp; Revenue</a>
+    </div>
+
+    {% if errors %}
+        <div class="errors">
+            {% for error in errors %}
+                <p>⚠️ {{ error }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if stocks %}
+
+    <!-- ── P/S table ── -->
+    <h2 class="section-heading">P/S</h2>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th title="Price ÷ trailing 12-month revenue per share">P/S TTM</th>
+                    <th title="Market cap ÷ prior fiscal year revenue (Year Ago Revenue)">MCap / Rev FY0</th>
+                    <th title="Market cap ÷ current fiscal year consensus revenue estimate">MCap / Rev FY1</th>
+                    <th title="Market cap ÷ next fiscal year consensus revenue estimate">MCap / Rev FY2</th>
+                    <th title="2-year revenue CAGR from FY0 to FY2. N/A when FY0 revenue is zero or negative.">Rev Growth</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stock in stocks %}
+                <tr>
+                    <td class="symbol">{{ stock.symbol }}</td>
+                    <td class="name">{{ stock.name }}</td>
+                    <td class="num">{{ stock.ps_ttm }}</td>
+                    <td class="num">{{ stock.ps_fy0 }}</td>
+                    <td class="num">{{ stock.ps_fy1 }}</td>
+                    <td class="num">{{ stock.ps_fy2 }}</td>
+                    <td class="num">{{ stock.rev_growth }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ── MCap / Rev FY0 vs Revenue Growth scatter chart ── -->
+    <div class="chart-block" style="max-width: 600px; margin-top: 48px;">
+        <h2 class="section-heading" style="margin-top: 0;">MCap / Rev FY0 vs. Revenue Growth</h2>
+        <div id="chartLegend" class="chart-legend"></div>
+        <div class="chart-wrap">
+            <canvas id="psChart" role="img" aria-label="Scatter chart of MCap/Revenue FY0 vs Revenue Growth"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script>
+        const chartData = {{ chart_json | safe }};
+
+        const palette = ['#378ADD', '#1D9E75', '#D85A30', '#7F77DD', '#BA7517', '#D4537E', '#0F6E56', '#993556'];
+
+        var legendEl = document.getElementById('chartLegend');
+        chartData.forEach(function(s, i) {
+            var color = palette[i % palette.length];
+            legendEl.innerHTML += '<span><span class="dot" style="background:' + color + '"></span>' + s.symbol + '</span>';
+        });
+
+        var datasets = chartData.map(function(s, i) {
+            return {
+                label: s.symbol,
+                data: [{ x: s.revGrowth, y: s.ps_fy0 }],
+                backgroundColor: palette[i % palette.length] + 'CC',
+                borderColor:     palette[i % palette.length],
+                borderWidth: 1.5,
+                pointRadius: 8,
+                pointHoverRadius: 11
+            };
+        });
+
+        const validPs = chartData.filter(function(s) { return s.ps_fy0 !== null; });
+        const validRg = chartData.filter(function(s) { return s.revGrowth !== null; });
+        const avgPs = validPs.length ? validPs.reduce(function(a, s) { return a + s.ps_fy0;    }, 0) / validPs.length : null;
+        const avgRg = validRg.length ? validRg.reduce(function(a, s) { return a + s.revGrowth; }, 0) / validRg.length : null;
+
+        new Chart(document.getElementById('psChart'), {
+            type: 'scatter',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label
+                                    + '  |  Rev Growth: ' + ctx.parsed.x.toFixed(1) + '%'
+                                    + '  ·  MCap/Rev FY0: ' + ctx.parsed.y.toFixed(1) + 'x';
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            avgPsLine: avgPs === null ? {} : {
+                                type: 'line',
+                                yMin: avgPs,
+                                yMax: avgPs,
+                                borderColor: 'rgba(0,0,0,0.25)',
+                                borderWidth: 1,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: 'Avg P/S ' + avgPs.toFixed(1) + 'x',
+                                    position: 'end',
+                                    backgroundColor: 'rgba(255,255,255,0.75)',
+                                    color: '#555',
+                                    font: { size: 11 }
+                                }
+                            },
+                            avgRgLine: avgRg === null ? {} : {
+                                type: 'line',
+                                xMin: avgRg,
+                                xMax: avgRg,
+                                borderColor: 'rgba(0,0,0,0.25)',
+                                borderWidth: 1,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: 'Avg Growth ' + avgRg.toFixed(1) + '%',
+                                    position: 'end',
+                                    backgroundColor: 'rgba(255,255,255,0.75)',
+                                    color: '#555',
+                                    font: { size: 11 }
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Revenue Growth (2-yr CAGR, %)' },
+                        grid:  { display: false },
+                        ticks: { callback: function(v) { return v + '%'; } }
+                    },
+                    y: {
+                        title: { display: true, text: 'MCap / Rev FY0' },
+                        grid:  { display: false },
+                        ticks: { callback: function(v) { return v + 'x'; } }
+                    }
+                },
+                layout: { padding: 20 }
+            }
+        });
+    </script>
+
+    {% endif %}
+
+</body>
+</html>

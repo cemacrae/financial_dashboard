@@ -1,0 +1,166 @@
+body {
+    font-family: sans-serif;
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #222;
+}
+
+h1 {
+    margin-bottom: 24px;
+}
+
+form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+input[type="text"] {
+    padding: 8px 12px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 300px;
+}
+
+button {
+    padding: 8px 16px;
+    font-size: 1rem;
+    background-color: #0057ff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0041cc;
+}
+
+/* ── Table ── */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    min-width: 900px;
+    white-space: nowrap;
+}
+
+th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.9rem;
+}
+
+th {
+    background-color: #f4f4f4;
+    font-weight: 600;
+    vertical-align: bottom;
+}
+
+td.symbol {
+    font-weight: 600;
+    font-family: monospace;
+    font-size: 0.95rem;
+}
+
+td.name {
+    white-space: normal;
+    min-width: 140px;
+    color: #444;
+}
+
+td.num {
+    text-align: right;
+    font-family: monospace;
+}
+
+tr:hover {
+    background-color: #f9f9f9;
+}
+
+.errors p {
+    color: #cc0000;
+    margin: 4px 0;
+}
+
+/* ── Section headings ── */
+.section-heading {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 36px 0 8px;
+    color: #222;
+    letter-spacing: 0.01em;
+}
+
+/* ── Navigation tabs ── */
+.nav-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 28px;
+}
+
+.tab-btn {
+    padding: 7px 16px;
+    font-size: 0.9rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #444;
+    background-color: #f4f4f4;
+}
+
+.tab-btn:hover {
+    background-color: #e8e8e8;
+}
+
+.tab-btn.active {
+    background-color: #0057ff;
+    color: white;
+    border-color: #0057ff;
+}
+
+/* ── Charts ── */
+.chart-block h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+}
+
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 12px;
+    color: #444;
+    margin-bottom: 10px;
+}
+
+.chart-legend span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.chart-legend .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.chart-wrap {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Financial Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Financial Dashboard</h1>
+
+    <form method="GET" action="/">
+        <label for="symbols">Enter stock symbols (comma-separated):</label>
+        <input
+            type="text"
+            id="symbols"
+            name="symbols"
+            value="{{ symbols_input }}"
+            placeholder="e.g. AAPL, MSFT, TSLA"
+        >
+        <button type="submit">Compare</button>
+    </form>
+
+    <div class="nav-tabs">
+        <a href="/?symbols={{ symbols_input }}" class="tab-btn active">P/E &amp; EPS</a>
+        <a href="/ps-revenue?symbols={{ symbols_input }}" class="tab-btn">P/S &amp; Revenue</a>
+    </div>
+
+    {% if errors %}
+        <div class="errors">
+            {% for error in errors %}
+                <p>⚠️ {{ error }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if stocks %}
+
+    <!-- ── P/E table ── -->
+    <h2 class="section-heading">P/E</h2>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th title="Price ÷ trailing 12-month EPS">P/E TTM</th>
+                    <th title="Price ÷ prior fiscal year EPS (Year Ago EPS)">P/E FY0</th>
+                    <th title="Price ÷ current fiscal year consensus EPS estimate">P/E FY1</th>
+                    <th title="Price ÷ next fiscal year consensus EPS estimate">P/E FY2</th>
+                    <th title="2-year EPS CAGR from FY0 to FY2. N/A when FY0 EPS is zero or negative.">EPS Growth</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stock in stocks %}
+                <tr>
+                    <td class="symbol">{{ stock.symbol }}</td>
+                    <td class="name">{{ stock.name }}</td>
+                    <td class="num">{{ stock.price }}</td>
+                    <td class="num">{{ stock.pe_ttm }}</td>
+                    <td class="num">{{ stock.pe_fy0 }}</td>
+                    <td class="num">{{ stock.pe_fy1 }}</td>
+                    <td class="num">{{ stock.pe_fy2 }}</td>
+                    <td class="num">{{ stock.eps_growth }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ── EPS table ── -->
+    <h2 class="section-heading">EPS</h2>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>FY End</th>
+                    <th title="Diluted EPS for the trailing 12 months">EPS TTM</th>
+                    <th title="Actual diluted EPS for the prior fiscal year">EPS FY0</th>
+                    <th title="Analyst consensus EPS estimate for the current fiscal year">EPS FY1</th>
+                    <th title="Analyst consensus EPS estimate for next fiscal year">EPS FY2</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stock in stocks %}
+                <tr>
+                    <td class="symbol">{{ stock.symbol }}</td>
+                    <td class="name">{{ stock.name }}</td>
+                    <td class="num">{{ stock.fy_end }}</td>
+                    <td class="num">{{ stock.eps_ttm }}</td>
+                    <td class="num">{{ stock.eps_fy0 }}</td>
+                    <td class="num">{{ stock.eps_fy1 }}</td>
+                    <td class="num">{{ stock.eps_fy2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ── P/E FY0 vs EPS Growth scatter chart ── -->
+    <div class="chart-block" style="max-width: 600px; margin-top: 48px;">
+        <h2 class="section-heading" style="margin-top: 0;">P/E FY0 vs. EPS Growth</h2>
+        <div id="chartLegend" class="chart-legend"></div>
+        <div class="chart-wrap">
+            <canvas id="peChart" role="img" aria-label="Scatter chart of P/E FY0 vs EPS Growth"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script>
+        const chartData = {{ chart_json | safe }};
+
+        const palette = ['#378ADD', '#1D9E75', '#D85A30', '#7F77DD', '#BA7517', '#D4537E', '#0F6E56', '#993556'];
+
+        var legendEl = document.getElementById('chartLegend');
+        chartData.forEach(function(s, i) {
+            var color = palette[i % palette.length];
+            legendEl.innerHTML += '<span><span class="dot" style="background:' + color + '"></span>' + s.symbol + '</span>';
+        });
+
+        var datasets = chartData.map(function(s, i) {
+            return {
+                label: s.symbol,
+                data: [{ x: s.epsGrowth, y: s.pe_fy0 }],
+                backgroundColor: palette[i % palette.length] + 'CC',
+                borderColor:     palette[i % palette.length],
+                borderWidth: 1.5,
+                pointRadius: 8,
+                pointHoverRadius: 11
+            };
+        });
+
+        const validPe = chartData.filter(function(s) { return s.pe_fy0 !== null; });
+        const validEg = chartData.filter(function(s) { return s.epsGrowth !== null; });
+        const avgPe = validPe.length ? validPe.reduce(function(a, s) { return a + s.pe_fy0;    }, 0) / validPe.length : null;
+        const avgEg = validEg.length ? validEg.reduce(function(a, s) { return a + s.epsGrowth; }, 0) / validEg.length : null;
+
+        new Chart(document.getElementById('peChart'), {
+            type: 'scatter',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label
+                                    + '  |  EPS Growth: ' + ctx.parsed.x.toFixed(1) + '%'
+                                    + '  ·  P/E FY0: '   + ctx.parsed.y.toFixed(1) + 'x';
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            avgPeLine: avgPe === null ? {} : {
+                                type: 'line',
+                                yMin: avgPe,
+                                yMax: avgPe,
+                                borderColor: 'rgba(0,0,0,0.25)',
+                                borderWidth: 1,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: 'Avg P/E ' + avgPe.toFixed(1) + 'x',
+                                    position: 'end',
+                                    backgroundColor: 'rgba(255,255,255,0.75)',
+                                    color: '#555',
+                                    font: { size: 11 }
+                                }
+                            },
+                            avgEgLine: avgEg === null ? {} : {
+                                type: 'line',
+                                xMin: avgEg,
+                                xMax: avgEg,
+                                borderColor: 'rgba(0,0,0,0.25)',
+                                borderWidth: 1,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: 'Avg Growth ' + avgEg.toFixed(1) + '%',
+                                    position: 'end',
+                                    backgroundColor: 'rgba(255,255,255,0.75)',
+                                    color: '#555',
+                                    font: { size: 11 }
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'EPS Growth (2-yr CAGR, %)' },
+                        grid:  { display: false },
+                        ticks: { callback: function(v) { return v + '%'; } }
+                    },
+                    y: {
+                        title: { display: true, text: 'P/E FY0' },
+                        grid:  { display: false },
+                        ticks: { callback: function(v) { return v + 'x'; } }
+                    }
+                },
+                layout: { padding: 20 }
+            }
+        });
+    </script>
+
+    {% endif %}
+
+</body>
+</html>
