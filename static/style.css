@@ -164,3 +164,45 @@ tr:hover {
     height: 420px;   /* was 300px */
     width: 100%;
 }
+
+/* ── Expandable per-stock history ── */
+.symbol-toggle {
+    color: #0057ff;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.symbol-toggle:hover {
+    text-decoration: underline;
+}
+
+.history-row td {
+    background-color: #fafafa;
+    padding: 20px 14px;
+}
+
+.history-charts {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.history-chart-block {
+    flex: 1 1 320px;
+    min-width: 280px;
+    max-width: 100%;
+}
+
+.history-chart-block h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: #444;
+}
+
+.chart-wrap.small {
+    position: relative;
+    height: 220px;
+    width: 100%;
+}

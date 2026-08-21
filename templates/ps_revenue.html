@@ -36,7 +36,6 @@
     {% if stocks %}
 
     <!-- ── P/S table ── -->
-    <h2 class="section-heading">P/S</h2>
     <div class="table-scroll">
         <table>
             <thead>
@@ -53,13 +52,27 @@
             <tbody>
                 {% for stock in stocks %}
                 <tr>
-                    <td class="symbol">{{ stock.symbol }}</td>
+                    <td class="symbol">
+                        <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('ps-{{ stock.symbol }}')">{{ stock.symbol }}</a>
+                    </td>
                     <td class="name">{{ stock.name }}</td>
                     <td class="num">{{ stock.ps_ttm }}</td>
                     <td class="num">{{ stock.ps_fy0 }}</td>
                     <td class="num">{{ stock.ps_fy1 }}</td>
                     <td class="num">{{ stock.ps_fy2 }}</td>
                     <td class="num">{{ stock.rev_growth }}</td>
+                </tr>
+                <tr id="ps-{{ stock.symbol }}-row" class="history-row" style="display: none;">
+                    <td colspan="7">
+                        <div class="history-charts">
+                            <div class="history-chart-block">
+                                <h3>Revenue — Actual vs. Estimate</h3>
+                                <div class="chart-wrap small">
+                                    <canvas id="ps-{{ stock.symbol }}-rev"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -174,6 +187,157 @@
                 layout: { padding: 20 }
             }
         });
+    </script>
+
+    <script>
+        const stockHistories = {
+            {% for stock in stocks %}
+            "{{ stock.symbol }}": {{ stock.history_json | safe }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+        };
+
+        const renderedHistoryCharts = {};
+        const historyChartInstances = {};
+
+        function toggleHistory(key) {
+            const row = document.getElementById(key + '-row');
+            if (!row) return;
+            const isHidden = row.style.display === 'none';
+            if (isHidden) {
+                row.style.display = 'table-row';
+                requestAnimationFrame(function() {
+                    if (!renderedHistoryCharts[key]) {
+                        renderHistoryCharts(key);
+                        renderedHistoryCharts[key] = true;
+                    } else {
+                        resizeHistoryCharts(key);
+                    }
+                });
+            } else {
+                row.style.display = 'none';
+            }
+        }
+
+        function resizeHistoryCharts(key) {
+            const instances = historyChartInstances[key];
+            if (!instances) return;
+            instances.forEach(function(chart) { chart.resize(); });
+        }
+
+        function renderHistoryCharts(key) {
+            const symbol = key.substring(key.indexOf('-') + 1);
+            const hist = stockHistories[symbol];
+            if (!hist) return;
+
+            const actualColor    = '#378ADD';
+            const estimateColor  = '#BA7517';
+            const histTrendColor = '#1D9E75';
+            const fwdTrendColor  = '#D85A30';
+
+            function buildBarColors() {
+                return [actualColor, actualColor, actualColor, actualColor, estimateColor, estimateColor];
+            }
+
+            function buildTrendlines(values, histCagr, fwdCagr) {
+                const datasets = [];
+                if (values[0] !== null && values[3] !== null) {
+                    datasets.push({
+                        type: 'line',
+                        label: 'Historical CAGR' + (histCagr !== null ? ' (' + histCagr.toFixed(1) + '%)' : ''),
+                        data: [
+                            { x: hist.labels[0], y: values[0] },
+                            { x: hist.labels[3], y: values[3] }
+                        ],
+                        borderColor: histTrendColor,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: histTrendColor,
+                        fill: false,
+                        order: 0,
+                        xAxisID: 'x'
+                    });
+                }
+                if (values[3] !== null && values[5] !== null) {
+                    datasets.push({
+                        type: 'line',
+                        label: 'Forward CAGR' + (fwdCagr !== null ? ' (' + fwdCagr.toFixed(1) + '%)' : ''),
+                        data: [
+                            { x: hist.labels[3], y: values[3] },
+                            { x: hist.labels[5], y: values[5] }
+                        ],
+                        borderColor: fwdTrendColor,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: fwdTrendColor,
+                        fill: false,
+                        order: 0,
+                        xAxisID: 'x'
+                    });
+                }
+                return datasets;
+            }
+
+            function formatAxisNumber(v) {
+                const abs = Math.abs(v);
+                if (abs >= 1e12) return '$' + (v / 1e12).toFixed(1) + 'T';
+                if (abs >= 1e9)  return '$' + (v / 1e9).toFixed(1) + 'B';
+                if (abs >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
+                if (abs >= 1e3)  return '$' + (v / 1e3).toFixed(1) + 'K';
+                return '$' + v.toFixed(2);
+            }
+
+            function makeChart(canvasId, values, label, histCagr, fwdCagr, isCurrency) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return null;
+
+                const barDataset = {
+                    type: 'bar',
+                    label: label,
+                    data: values,
+                    backgroundColor: buildBarColors(),
+                    order: 1,
+                    xAxisID: 'x'
+                };
+
+                const trendDatasets = buildTrendlines(values, histCagr, fwdCagr);
+
+                return new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels: hist.labels,
+                        datasets: [barDataset, ...trendDatasets]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: { filter: function(item) { return item.text !== label; } }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'category',
+                                labels: hist.labels,
+                                grid: { display: false }
+                            },
+                            y: {
+                                grid: { color: 'rgba(0,0,0,0.06)' },
+                                ticks: {
+                                    callback: function(v) {
+                                        return isCurrency ? formatAxisNumber(v) : v;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const revChart = makeChart(key + '-rev', hist.revenue, 'Revenue', hist.revHistCagr, hist.revFwdCagr, true);
+            historyChartInstances[key] = [revChart].filter(function(c) { return c !== null; });
+        }
     </script>
 
     {% endif %}

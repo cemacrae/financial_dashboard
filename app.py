@@ -179,6 +179,44 @@ def fetch_revenue_estimates(ticker):
     except Exception:
         return None, None, None
 
+def fetch_historical_financials(ticker):
+    """
+    Returns (eps_history, rev_history), each a list of 4 floats or None,
+    ordered oldest to newest: [FY-3, FY-2, FY-1, FY0].
+    Pulled from income_stmt columns[0..3], most-recent-first, then reversed.
+    """
+    try:
+        stmt = ticker.income_stmt
+        if stmt is None or stmt.empty:
+            return [None, None, None, None], [None, None, None, None]
+
+        cols = list(stmt.columns[:4])
+
+        def safe_row(row_label):
+            if row_label not in stmt.index:
+                return [None] * 4
+            values = []
+            for col in cols:
+                try:
+                    v = stmt.loc[row_label, col]
+                    values.append(float(v) if v is not None and not math.isnan(float(v)) else None)
+                except Exception:
+                    values.append(None)
+            values_padded = (values + [None] * 4)[:4]
+            return list(reversed(values_padded))
+
+        eps_history = safe_row("Diluted EPS")
+        rev_history = safe_row("Total Revenue")
+
+        return eps_history, rev_history
+    except Exception:
+        return [None, None, None, None], [None, None, None, None]
+
+
+def history_cagr(start_value, end_value, years):
+    """Same math as raw_cagr but named for clarity when used on historical arrays."""
+    return raw_cagr(start_value, end_value, years)
+
 
 app = Flask(__name__)
 app.config["CACHE_TYPE"] = "SimpleCache"
@@ -201,6 +239,27 @@ def fetch_stock(symbol):
     rev_fy0_raw, rev_fy1_raw, rev_fy2_raw = fetch_revenue_estimates(ticker)
     market_cap_raw = info.get("marketCap")
     ps_ttm_raw = info.get("priceToSalesTrailing12Months")
+
+    eps_history, rev_history = fetch_historical_financials(ticker)
+
+    # Full 6-point series: [FY-3, FY-2, FY-1, FY0, FY1, FY2]
+    eps_series = eps_history + [fy1_raw, fy2_raw]
+    rev_series = rev_history + [rev_fy1_raw, rev_fy2_raw]
+
+    eps_hist_cagr = history_cagr(eps_history[0], eps_history[3], 3)
+    eps_fwd_cagr = history_cagr(eps_history[3], fy2_raw, 2)
+    rev_hist_cagr = history_cagr(rev_history[0], rev_history[3], 3)
+    rev_fwd_cagr = history_cagr(rev_history[3], rev_fy2_raw, 2)
+
+    history_payload = {
+        "labels": ["FY-3", "FY-2", "FY-1", "FY0", "FY1", "FY2"],
+        "eps": eps_series,
+        "revenue": rev_series,
+        "epsHistCagr": eps_hist_cagr,
+        "epsFwdCagr": eps_fwd_cagr,
+        "revHistCagr": rev_hist_cagr,
+        "revFwdCagr": rev_fwd_cagr,
+    }
 
     return {
         # Identifiers
@@ -236,6 +295,9 @@ def fetch_stock(symbol):
         # Raw floats for P/S chart
         "ps_fy0_raw": raw_ps(market_cap_raw, rev_fy0_raw),
         "rev_growth_raw": raw_cagr(rev_fy0_raw, rev_fy2_raw),
+
+        # Per-stock history for expandable chart rows
+        "history_json": json.dumps(history_payload),
     }
 
 
