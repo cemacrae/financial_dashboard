@@ -54,7 +54,9 @@
             <tbody>
                 {% for stock in stocks %}
                 <tr>
-                    <td class="symbol">{{ stock.symbol }}</td>
+                    <td class="symbol">
+                        <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('pe-{{ stock.symbol }}')">{{ stock.symbol }}</a>
+                    </td>
                     <td class="name">{{ stock.name }}</td>
                     <td class="num">{{ stock.price }}</td>
                     <td class="num">{{ stock.pe_ttm }}</td>
@@ -62,6 +64,18 @@
                     <td class="num">{{ stock.pe_fy1 }}</td>
                     <td class="num">{{ stock.pe_fy2 }}</td>
                     <td class="num">{{ stock.eps_growth }}</td>
+                </tr>
+                <tr id="pe-{{ stock.symbol }}-row" class="history-row" style="display: none;">
+                    <td colspan="8">
+                        <div class="history-charts">
+                            <div class="history-chart-block">
+                                <h3 title="Price ÷ next fiscal year (FY2) consensus EPS estimate">Forward P/E Trend (90-Day)</h3>
+                                <div class="chart-wrap small">
+                                    <canvas id="pe-{{ stock.symbol }}-pe-trend"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -368,8 +382,57 @@
                 });
             }
 
+            function makePeTrendChart(canvasId, labels, values) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return null;
+
+                const barColors = values.map(function(v, i) {
+                    return i === 0 ? '#0057ff' : '#378ADD';
+                });
+
+                return new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Forward P/E (Price ÷ FY2 EPS estimate, as of date)',
+                            data: values,
+                            backgroundColor: barColors
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return ctx.parsed.y === null ? 'N/A' : 'Forward P/E: ' + ctx.parsed.y.toFixed(1) + 'x';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'category',
+                                labels: labels,
+                                grid: { display: false }
+                            },
+                            y: {
+                                title: { display: true, text: 'Forward P/E (Next FY)' },
+                                grid: { color: 'rgba(0,0,0,0.06)' },
+                                ticks: { callback: function(v) { return v + 'x'; } }
+                            }
+                        }
+                    }
+                });
+            }
+
             const epsChart = makeChart(key + '-eps', hist.eps, 'EPS', hist.epsHistCagr, hist.epsFwdCagr, true);
-            historyChartInstances[key] = [epsChart].filter(function(c) { return c !== null; });
+            const revChart = makeChart(key + '-rev', hist.revenue, 'Revenue', hist.revHistCagr, hist.revFwdCagr, true);
+            const peTrendChart = makePeTrendChart(key + '-pe-trend', hist.peTrendLabels, hist.peTrendValues);
+            historyChartInstances[key] = [epsChart, revChart, peTrendChart].filter(function(c) { return c !== null; });
         }
     </script>    
 

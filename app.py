@@ -2,6 +2,7 @@ import math
 import json
 from flask import Flask, render_template, request
 from flask_caching import Cache
+import pandas as pd
 import yfinance as yf
 
 
@@ -217,6 +218,59 @@ def history_cagr(start_value, end_value, years):
     """Same math as raw_cagr but named for clarity when used on historical arrays."""
     return raw_cagr(start_value, end_value, years)
 
+def fetch_eps_trend_fy2(ticker):
+    """
+    Returns dict with keys current, 7daysAgo, 30daysAgo, 60daysAgo, 90daysAgo
+    (raw EPS floats or None), pulled from the '+1y' (next fiscal year) row of
+    the EPS Trend table on Yahoo Finance's Analysis tab.
+    """
+    keys = ["current", "7daysAgo", "30daysAgo", "60daysAgo", "90daysAgo"]
+    try:
+        trend = ticker.eps_trend
+        if trend is None or trend.empty or "+1y" not in trend.index:
+            return {k: None for k in keys}
+
+        def safe(col):
+            try:
+                v = trend.loc["+1y", col]
+                return float(v) if v is not None and not math.isnan(float(v)) else None
+            except Exception:
+                return None
+
+        return {k: safe(k) for k in keys}
+    except Exception:
+        return {k: None for k in keys}
+
+
+def fetch_price_days_ago(ticker, days_back=(0, 7, 30, 60, 90)):
+    """
+    Returns dict {offset_in_days: raw close price or None}. For each offset,
+    finds the closing price on the most recent trading day at or before
+    (today - offset) — this snaps backward over weekends/holidays instead of failing.
+    """
+    result = {d: None for d in days_back}
+    try:
+        hist = ticker.history(period="6mo")
+        if hist is None or hist.empty:
+            return result
+
+        idx = hist.index
+        if idx.tz is not None:
+            idx = idx.tz_localize(None)
+        hist = hist.copy()
+        hist.index = idx
+
+        today = pd.Timestamp.now().normalize()
+        for d in days_back:
+            target = today - pd.Timedelta(days=d)
+            eligible = hist.index[hist.index <= target]
+            if len(eligible) == 0:
+                continue
+            result[d] = float(hist.loc[eligible[-1], "Close"])
+    except Exception:
+        pass
+    return result
+
 
 app = Flask(__name__)
 app.config["CACHE_TYPE"] = "SimpleCache"
@@ -240,6 +294,18 @@ def fetch_stock(symbol):
     market_cap_raw = info.get("marketCap")
     ps_ttm_raw = info.get("priceToSalesTrailing12Months")
 
+    eps_trend_fy2 = fetch_eps_trend_fy2(ticker)
+    price_by_offset = fetch_price_days_ago(ticker)
+
+    pe_trend_labels = ["Current", "7d Ago", "30d Ago", "60d Ago", "90d Ago"]
+    pe_trend_offsets = [0, 7, 30, 60, 90]
+    pe_trend_eps_keys = ["current", "7daysAgo", "30daysAgo", "60daysAgo", "90daysAgo"]
+
+    pe_trend_values = [
+        raw_pe(price_by_offset.get(off), eps_trend_fy2.get(ek))
+        for off, ek in zip(pe_trend_offsets, pe_trend_eps_keys)
+    ]
+
     eps_history, rev_history = fetch_historical_financials(ticker)
 
     # Full 6-point series: [FY-3, FY-2, FY-1, FY0, FY1, FY2]
@@ -259,6 +325,8 @@ def fetch_stock(symbol):
         "epsFwdCagr": eps_fwd_cagr,
         "revHistCagr": rev_hist_cagr,
         "revFwdCagr": rev_fwd_cagr,
+        "peTrendLabels": pe_trend_labels,
+        "peTrendValues": pe_trend_values,
     }
 
     return {
