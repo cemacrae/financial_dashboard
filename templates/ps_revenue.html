@@ -67,7 +67,7 @@
     </div>
 
     <!-- ── MCap / Rev FY0 vs Revenue Growth scatter chart ── -->
-    <div class="chart-block" style="max-width: 600px; margin-top: 48px;">
+    <div class="chart-block" style="margin-top: 48px;">
         <h2 class="section-heading" style="margin-top: 0;">MCap / Rev FY0 vs. Revenue Growth</h2>
         <div id="chartLegend" class="chart-legend"></div>
         <div class="chart-wrap">
@@ -168,8 +168,8 @@
                     y: {
                         title: { display: true, text: 'MCap / Rev FY0' },
                         grid:  { display: false },
-                        ticks: { callback: function(v) { return v + 'x'; } }
-                    }
+                        ticks: { callback: function(v) { return v.toFixed(2) + 'x'; } }
+                        }
                 },
                 layout: { padding: 20 }
             }

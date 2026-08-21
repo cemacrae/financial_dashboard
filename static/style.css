@@ -161,6 +161,6 @@ tr:hover {
 
 .chart-wrap {
     position: relative;
-    height: 300px;
+    height: 420px;   /* was 300px */
     width: 100%;
 }
