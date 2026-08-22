@@ -277,16 +277,31 @@ app.config["CACHE_TYPE"] = "SimpleCache"
 app.config["CACHE_DEFAULT_TIMEOUT"] = 900
 cache = Cache(app)
 
+PRICE_CACHE_SECONDS = 60
+FUNDAMENTALS_CACHE_SECONDS = 6 * 60 * 60
 
-@cache.memoize(timeout=900)
-def fetch_stock(symbol):
+@cache.memoize(timeout=PRICE_CACHE_SECONDS)
+def fetch_price(symbol):
+    ticker = yf.Ticker(symbol)
+    try:
+        price = ticker.fast_info["lastPrice"]
+        if price:
+            return float(price)
+    except Exception:
+        pass
+    try:
+        info = ticker.info
+        return info.get("currentPrice") or info.get("regularMarketPrice")
+    except Exception:
+        return None
+
+
+@cache.memoize(timeout=FUNDAMENTALS_CACHE_SECONDS)
+def fetch_fundamentals(symbol):
     ticker = yf.Ticker(symbol)
     info = ticker.info
 
-    price_raw = info.get("currentPrice") or info.get("regularMarketPrice")
-    if not price_raw:
-        return None
-
+    name = info.get("longName", "N/A")
     eps_ttm_raw = info.get("trailingEps")
     fy0_raw, fy1_raw, fy2_raw = fetch_earnings_estimates(ticker)
     fy_end = fetch_fy_end_date(ticker)
@@ -294,8 +309,52 @@ def fetch_stock(symbol):
     market_cap_raw = info.get("marketCap")
     ps_ttm_raw = info.get("priceToSalesTrailing12Months")
 
+    eps_history, rev_history = fetch_historical_financials(ticker)
     eps_trend_fy2 = fetch_eps_trend_fy2(ticker)
     price_by_offset = fetch_price_days_ago(ticker)
+
+    return {
+        "name": name,
+        "eps_ttm_raw": eps_ttm_raw,
+        "fy0_raw": fy0_raw,
+        "fy1_raw": fy1_raw,
+        "fy2_raw": fy2_raw,
+        "fy_end": fy_end,
+        "rev_fy0_raw": rev_fy0_raw,
+        "rev_fy1_raw": rev_fy1_raw,
+        "rev_fy2_raw": rev_fy2_raw,
+        "market_cap_raw": market_cap_raw,
+        "ps_ttm_raw": ps_ttm_raw,
+        "eps_history": eps_history,
+        "rev_history": rev_history,
+        "eps_trend_fy2": eps_trend_fy2,
+        "price_by_offset": price_by_offset,
+    }
+
+
+def fetch_stock(symbol):
+    price_raw = fetch_price(symbol)
+    if not price_raw:
+        return None
+
+    f = fetch_fundamentals(symbol)
+    if f is None:
+        return None
+
+    eps_ttm_raw = f["eps_ttm_raw"]
+    fy0_raw, fy1_raw, fy2_raw = f["fy0_raw"], f["fy1_raw"], f["fy2_raw"]
+    fy_end = f["fy_end"]
+    rev_fy0_raw, rev_fy1_raw, rev_fy2_raw = f["rev_fy0_raw"], f["rev_fy1_raw"], f["rev_fy2_raw"]
+    market_cap_raw = f["market_cap_raw"]
+    ps_ttm_raw = f["ps_ttm_raw"]
+    eps_history, rev_history = f["eps_history"], f["rev_history"]
+    eps_trend_fy2 = f["eps_trend_fy2"]
+
+    # Use a fresh copy of the cached historical prices, but swap in today's
+    # live price for the "Current" (offset 0) point so that one bar always
+    # reflects the price we just fetched, not a stale fundamentals-cache price.
+    price_by_offset = dict(f["price_by_offset"])
+    price_by_offset[0] = price_raw
 
     pe_trend_labels = ["Current", "7d Ago", "30d Ago", "60d Ago", "90d Ago"]
     pe_trend_offsets = [0, 7, 30, 60, 90]
@@ -305,8 +364,6 @@ def fetch_stock(symbol):
         raw_pe(price_by_offset.get(off), eps_trend_fy2.get(ek))
         for off, ek in zip(pe_trend_offsets, pe_trend_eps_keys)
     ]
-
-    eps_history, rev_history = fetch_historical_financials(ticker)
 
     # Full 6-point series: [FY-3, FY-2, FY-1, FY0, FY1, FY2]
     eps_series = eps_history + [fy1_raw, fy2_raw]
@@ -332,7 +389,7 @@ def fetch_stock(symbol):
     return {
         # Identifiers
         "symbol": symbol,
-        "name": info.get("longName", "N/A"),
+        "name": f["name"],
 
         # P/E table (formatted)
         "price": fmt_price(price_raw),
