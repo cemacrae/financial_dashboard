@@ -301,8 +301,25 @@ def fetch_fundamentals(symbol):
     ticker = yf.Ticker(symbol)
     info = ticker.info
 
+    # Some stocks (e.g. foreign listings, ADRs) trade in one currency but
+    # report financials in another - e.g. 9988.HK trades in HKD but may
+    # report earnings in USD or CNY, so we flag the mismatch and skip the rest
+    currency = info.get("currency")
+    financial_currency = info.get("financialCurrency")
+    currency_mismatch = bool(currency and financial_currency and currency != financial_currency)
+
     name = info.get("longName", "N/A")
+
+    if currency_mismatch:
+        return {
+            "currency_mismatch": True,
+            "currency": currency,
+            "financial_currency": financial_currency,
+            "name": name,
+        }
+    
     eps_ttm_raw = info.get("trailingEps")
+
     fy0_raw, fy1_raw, fy2_raw = fetch_earnings_estimates(ticker)
     fy_end = fetch_fy_end_date(ticker)
     rev_fy0_raw, rev_fy1_raw, rev_fy2_raw = fetch_revenue_estimates(ticker)
@@ -314,6 +331,7 @@ def fetch_fundamentals(symbol):
     price_by_offset = fetch_price_days_ago(ticker)
 
     return {
+        "currency_mismatch": False,
         "name": name,
         "eps_ttm_raw": eps_ttm_raw,
         "fy0_raw": fy0_raw,
@@ -340,6 +358,12 @@ def fetch_stock(symbol):
     f = fetch_fundamentals(symbol)
     if f is None:
         return None
+
+    if f.get("currency_mismatch"):
+        raise ValueError(
+            f"price is in {f['currency']} but financials are reported in "
+            f"{f['financial_currency']} — comparisons across different currencies aren't supported yet"
+        )
 
     eps_ttm_raw = f["eps_ttm_raw"]
     fy0_raw, fy1_raw, fy2_raw = f["fy0_raw"], f["fy1_raw"], f["fy2_raw"]
