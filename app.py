@@ -294,23 +294,54 @@ def fetch_price(symbol):
         return info.get("currentPrice") or info.get("regularMarketPrice")
     except Exception:
         return None
+    
+EXCHANGE_RATE_CACHE_SECONDS = 5 * 60
+
+@cache.memoize(timeout=EXCHANGE_RATE_CACHE_SECONDS)
+def fetch_exchange_rate(from_currency, to_currency):
+    """
+    Returns how many units of to_currency one unit of from_currency is worth
+    (e.g. fetch_exchange_rate("HKD", "USD") -> ~0.128), or None if no rate found
+    """
+    if not from_currency or not to_currency:
+        return None
+    if from_currency == to_currency:
+        return 1.0
+    fx_ticker = yf.Ticker(f"{from_currency}{to_currency}=X")
+    try:
+        rate = fx_ticker.fast_info["lastPrice"]
+        if rate:
+            return float(rate)
+    except Exception:
+        pass
+    try:
+        info = fx_ticker.info
+        rate = info.get("regularMarketPrice") or info.get("currentPrice")
+        return float(rate) if rate else None
+    except Exception:
+        return None
 
 
 @cache.memoize(timeout=FUNDAMENTALS_CACHE_SECONDS)
 def fetch_fundamentals(symbol):
     ticker = yf.Ticker(symbol)
     info = ticker.info
-
-    # Some stocks (e.g. foreign listings, ADRs) trade in one currency but
-    # report financials in another - e.g. 9988.HK trades in HKD but may
-    # report earnings in USD or CNY, so we flag the mismatch and skip the rest
+    """
+    Some stocks (e.g. foreign listings, ADRs) trade in one currency but
+    report financials in another - e.g. 9988.HK trades in HKD but may
+    report earnings in USD or CNY, so we flag the mismatch and skip the rest
+    """
     currency = info.get("currency")
     financial_currency = info.get("financialCurrency")
-    currency_mismatch = bool(currency and financial_currency and currency != financial_currency)
+
+    if currency and financial_currency and currency != financial_currency:
+        fx_rate = fetch_exchange_rate(currency, financial_currency)
+    else:
+        fx_rate = 1.0
 
     name = info.get("longName", "N/A")
 
-    if currency_mismatch:
+    if fx_rate is None:
         return {
             "currency_mismatch": True,
             "currency": currency,
@@ -332,6 +363,7 @@ def fetch_fundamentals(symbol):
 
     return {
         "currency_mismatch": False,
+        "fx_rate": fx_rate,
         "name": name,
         "eps_ttm_raw": eps_ttm_raw,
         "fy0_raw": fy0_raw,
@@ -362,9 +394,10 @@ def fetch_stock(symbol):
     if f.get("currency_mismatch"):
         raise ValueError(
             f"price is in {f['currency']} but financials are reported in "
-            f"{f['financial_currency']} — comparisons across different currencies aren't supported yet"
+            f"{f['financial_currency']} — couldn't find an exchange rate to convert between them"
         )
 
+    fx_rate = f["fx_rate"]
     eps_ttm_raw = f["eps_ttm_raw"]
     fy0_raw, fy1_raw, fy2_raw = f["fy0_raw"], f["fy1_raw"], f["fy2_raw"]
     fy_end = f["fy_end"]
@@ -374,11 +407,19 @@ def fetch_stock(symbol):
     eps_history, rev_history = f["eps_history"], f["rev_history"]
     eps_trend_fy2 = f["eps_trend_fy2"]
 
+    price_converted = price_raw * fx_rate
+    market_cap_converted = market_cap_raw * fx_rate if market_cap_raw is not None else None
+
     # Use a fresh copy of the cached historical prices, but swap in today's
-    # live price for the "Current" (offset 0) point so that one bar always
-    # reflects the price we just fetched, not a stale fundamentals-cache price.
+    # live price so that one bar always reflects the price we just fetched, 
+    # not a stale fundamentals-cache price. Then convert every point into the 
+    # financials' currency
     price_by_offset = dict(f["price_by_offset"])
     price_by_offset[0] = price_raw
+    price_by_offset = {
+        off: (p * fx_rate if p is not None else None)
+        for off, p in price_by_offset.items()
+    }
 
     pe_trend_labels = ["Current", "7d Ago", "30d Ago", "60d Ago", "90d Ago"]
     pe_trend_offsets = [0, 7, 30, 60, 90]
@@ -417,14 +458,14 @@ def fetch_stock(symbol):
 
         # P/E table (formatted)
         "price": fmt_price(price_raw),
-        "pe_ttm": fmt_pe(price_raw, eps_ttm_raw),
-        "pe_fy0": fmt_pe(price_raw, fy0_raw),
-        "pe_fy1": fmt_pe(price_raw, fy1_raw),
-        "pe_fy2": fmt_pe(price_raw, fy2_raw),
+        "pe_ttm": fmt_pe(price_converted, eps_ttm_raw),
+        "pe_fy0": fmt_pe(price_converted, fy0_raw),
+        "pe_fy1": fmt_pe(price_converted, fy1_raw),
+        "pe_fy2": fmt_pe(price_converted, fy2_raw),
         "eps_growth": fmt_cagr(fy0_raw, fy2_raw),
 
         # Raw floats for P/E chart
-        "pe_fy0_raw": raw_pe(price_raw, fy0_raw),
+        "pe_fy0_raw": raw_pe(price_converted, fy0_raw),
         "eps_growth_raw": raw_cagr(fy0_raw, fy2_raw),
 
         # EPS table (formatted)
@@ -436,13 +477,13 @@ def fetch_stock(symbol):
 
         # P/S table (formatted)
         "ps_ttm": fmt_ratio(ps_ttm_raw),
-        "ps_fy0": fmt_ps(market_cap_raw, rev_fy0_raw),
-        "ps_fy1": fmt_ps(market_cap_raw, rev_fy1_raw),
-        "ps_fy2": fmt_ps(market_cap_raw, rev_fy2_raw),
+        "ps_fy0": fmt_ps(market_cap_converted, rev_fy0_raw),
+        "ps_fy1": fmt_ps(market_cap_converted, rev_fy1_raw),
+        "ps_fy2": fmt_ps(market_cap_converted, rev_fy2_raw),
         "rev_growth": fmt_cagr(rev_fy0_raw, rev_fy2_raw),
 
         # Raw floats for P/S chart
-        "ps_fy0_raw": raw_ps(market_cap_raw, rev_fy0_raw),
+        "ps_fy0_raw": raw_ps(market_cap_converted, rev_fy0_raw),
         "rev_growth_raw": raw_cagr(rev_fy0_raw, rev_fy2_raw),
 
         # Per-stock history for expandable chart rows
