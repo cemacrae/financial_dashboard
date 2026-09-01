@@ -364,6 +364,8 @@ def fetch_fundamentals(symbol):
     return {
         "currency_mismatch": False,
         "fx_rate": fx_rate,
+        "currency": currency,
+        "financial_currency": financial_currency,
         "name": name,
         "eps_ttm_raw": eps_ttm_raw,
         "fy0_raw": fy0_raw,
@@ -398,6 +400,14 @@ def fetch_stock(symbol):
         )
 
     fx_rate = f["fx_rate"]
+    currency = f["currency"]
+    financial_currency = f["financial_currency"]
+
+    if currency and financial_currency and currency != financial_currency:
+        currency_label = f"{currency} → {financial_currency}"
+    else:
+        currency_label = financial_currency or currency or "N/A"
+
     eps_ttm_raw = f["eps_ttm_raw"]
     fy0_raw, fy1_raw, fy2_raw = f["fy0_raw"], f["fy1_raw"], f["fy2_raw"]
     fy_end = f["fy_end"]
@@ -455,6 +465,7 @@ def fetch_stock(symbol):
         # Identifiers
         "symbol": symbol,
         "name": f["name"],
+        "currency_label": currency_label,
 
         # P/E table (formatted)
         "price": fmt_price(price_raw),

@@ -42,6 +42,7 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
+                    <th>Currency</th>
                     <th>Price</th>
                     <th title="Price ÷ trailing 12-month revenue per share">P/S TTM</th>
                     <th title="Market cap ÷ prior fiscal year revenue (Year Ago Revenue)">MCap / Rev FY0</th>
@@ -57,6 +58,7 @@
                         <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('ps-{{ stock.symbol }}')">{{ stock.symbol }}</a>
                     </td>
                     <td class="name">{{ stock.name }}</td>
+                    <td>{{ stock.currency_label }}</td>
                     <td class="num">{{ stock.price }}</td>
                     <td class="num">{{ stock.ps_ttm }}</td>
                     <td class="num">{{ stock.ps_fy0 }}</td>
@@ -65,7 +67,7 @@
                     <td class="num">{{ stock.rev_growth }}</td>
                 </tr>
                 <tr id="ps-{{ stock.symbol }}-row" class="history-row" style="display: none;">
-                    <td colspan="7">
+                    <td colspan="8">
                         <div class="history-charts">
                             <div class="history-chart-block">
                                 <h3>Revenue — Actual vs. Estimate</h3>

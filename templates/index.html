@@ -43,6 +43,7 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
+                    <th>Currency</th>
                     <th>Price</th>
                     <th title="Price ÷ trailing 12-month EPS">P/E TTM</th>
                     <th title="Price ÷ prior fiscal year EPS (Year Ago EPS)">P/E FY0</th>
@@ -58,6 +59,7 @@
                         <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('pe-{{ stock.symbol }}')">{{ stock.symbol }}</a>
                     </td>
                     <td class="name">{{ stock.name }}</td>
+                    <td>{{ stock.currency_label }}</td>
                     <td class="num">{{ stock.price }}</td>
                     <td class="num">{{ stock.pe_ttm }}</td>
                     <td class="num">{{ stock.pe_fy0 }}</td>
@@ -66,7 +68,7 @@
                     <td class="num">{{ stock.eps_growth }}</td>
                 </tr>
                 <tr id="pe-{{ stock.symbol }}-row" class="history-row" style="display: none;">
-                    <td colspan="8">
+                    <td colspan="9">
                         <div class="history-charts">
                             <div class="history-chart-block">
                                 <h3 title="Price ÷ next fiscal year (FY2) consensus EPS estimate">Forward P/E Trend (90-Day)</h3>
@@ -90,6 +92,7 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
+                    <th>Currency</th>
                     <th>FY End</th>
                     <th title="Diluted EPS for the trailing 12 months">EPS TTM</th>
                     <th title="Actual diluted EPS for the prior fiscal year">EPS FY0</th>
@@ -104,6 +107,7 @@
                         <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('eps-{{ stock.symbol }}')">{{ stock.symbol }}</a>
                     </td>
                     <td class="name">{{ stock.name }}</td>
+                    <td>{{ stock.currency_label }}</td>
                     <td class="num">{{ stock.fy_end }}</td>
                     <td class="num">{{ stock.eps_ttm }}</td>
                     <td class="num">{{ stock.eps_fy0 }}</td>
@@ -111,7 +115,7 @@
                     <td class="num">{{ stock.eps_fy2 }}</td>
                 </tr>
                 <tr id="eps-{{ stock.symbol }}-row" class="history-row" style="display: none;">
-                    <td colspan="7">
+                    <td colspan="8">
                         <div class="history-charts">
                             <div class="history-chart-block">
                                 <h3>EPS — Actual vs. Estimate</h3>
