@@ -134,6 +134,18 @@ def fmt_market_cap(value, currency="USD"):
         compact = f"{v:,.0f}"
     return f"{currency} {compact}"
 
+PENCE_CURRENCIES = {"GBp", "GBX"}
+
+def normalize_currency(currency):
+    """
+    Yahoo quotes some UK-listed shares in pence (GBp/GBX) rather than whole
+    pounds (GBP). Function returns (normalized_currency, divisor) so pence-denominated 
+    raw values can be converted to whole pounds before other conversions are made.
+    """
+    if currency in PENCE_CURRENCIES:
+        return "GBP", 100.0
+    return currency, 1.0
+
 
 def fetch_fy_end_date(ticker):
     """Most recent fiscal year-end date as e.g. '1/31/2026'."""
@@ -155,7 +167,7 @@ def fetch_earnings_estimates(ticker):
     try:
         ee = ticker.earnings_estimate
         if ee is None or ee.empty:
-            return None, None, None
+            return None, None, None, None
 
         def safe(row, col):
             try:
@@ -164,13 +176,16 @@ def fetch_earnings_estimates(ticker):
             except Exception:
                 return None
 
+        currency = ee["currency"].iloc[0] if "currency" in ee.columns else None
+
         return (
             safe("0y", "yearAgoEps"),
             safe("0y", "avg"),
             safe("+1y", "avg"),
+            currency,
         )
     except Exception:
-        return None, None, None
+        return None, None, None, None
 
 
 def fetch_revenue_estimates(ticker):
@@ -182,7 +197,7 @@ def fetch_revenue_estimates(ticker):
     try:
         re = ticker.revenue_estimate
         if re is None or re.empty:
-            return None, None, None
+            return None, None, None, None
 
         def safe(row, col):
             try:
@@ -191,13 +206,16 @@ def fetch_revenue_estimates(ticker):
             except Exception:
                 return None
 
+        currency = re["currency"].iloc[0] if "currency" in re.columns else None
+
         return (
             safe("0y", "yearAgoRevenue"),
             safe("0y", "avg"),
             safe("+1y", "avg"),
+            currency,
         )
     except Exception:
-        return None, None, None
+        return None, None, None, None
 
 def fetch_historical_financials(ticker):
     """
@@ -247,7 +265,7 @@ def fetch_eps_trend_fy2(ticker):
     try:
         trend = ticker.eps_trend
         if trend is None or trend.empty or "+1y" not in trend.index:
-            return {k: None for k in keys}
+            return {k: None for k in keys}, None
 
         def safe(col):
             try:
@@ -256,9 +274,11 @@ def fetch_eps_trend_fy2(ticker):
             except Exception:
                 return None
 
-        return {k: safe(k) for k in keys}
+        currency = trend["currency"].iloc[0] if "currency" in trend.columns else None
+
+        return {k: safe(k) for k in keys}, currency
     except Exception:
-        return {k: None for k in keys}
+        return {k: None for k in keys}, None
 
 
 def fetch_price_days_ago(ticker, days_back=(0, 7, 30, 60, 90)):
@@ -289,6 +309,16 @@ def fetch_price_days_ago(ticker, days_back=(0, 7, 30, 60, 90)):
     except Exception:
         pass
     return result
+
+def rate_to_financial_currency(quote_currency, trading_currency, financial_currency, trading_fx_rate):
+    """
+    Picks the right multiplier to bring a given quote_currency value into financial_currency.
+    """
+    if not quote_currency or quote_currency == financial_currency:
+        return 1.0
+    if quote_currency == trading_currency:
+        return trading_fx_rate
+    return fetch_exchange_rate(quote_currency, financial_currency) or 1.0
 
 
 app = Flask(__name__)
@@ -350,7 +380,7 @@ def fetch_fundamentals(symbol):
     report financials in another - e.g. 9988.HK trades in HKD but may
     report earnings in USD or CNY, so we flag the mismatch and skip the rest
     """
-    currency = info.get("currency")
+    currency, price_divisor = normalize_currency(info.get("currency"))
     financial_currency = info.get("financialCurrency")
 
     if currency and financial_currency and currency != financial_currency:
@@ -370,19 +400,20 @@ def fetch_fundamentals(symbol):
     
     eps_ttm_raw = info.get("trailingEps")
 
-    fy0_raw, fy1_raw, fy2_raw = fetch_earnings_estimates(ticker)
+    fy0_raw, fy1_raw, fy2_raw, eps_estimate_currency = fetch_earnings_estimates(ticker)
     fy_end = fetch_fy_end_date(ticker)
-    rev_fy0_raw, rev_fy1_raw, rev_fy2_raw = fetch_revenue_estimates(ticker)
+    rev_fy0_raw, rev_fy1_raw, rev_fy2_raw, revenue_estimate_currency = fetch_revenue_estimates(ticker)
     market_cap_raw = info.get("marketCap")
     ps_ttm_raw = info.get("priceToSalesTrailing12Months")
 
     eps_history, rev_history = fetch_historical_financials(ticker)
-    eps_trend_fy2 = fetch_eps_trend_fy2(ticker)
+    eps_trend_fy2, eps_trend_currency = fetch_eps_trend_fy2(ticker)
     price_by_offset = fetch_price_days_ago(ticker)
 
     return {
         "currency_mismatch": False,
         "fx_rate": fx_rate,
+        "price_divisor": price_divisor,
         "currency": currency,
         "financial_currency": financial_currency,
         "name": name,
@@ -400,6 +431,9 @@ def fetch_fundamentals(symbol):
         "rev_history": rev_history,
         "eps_trend_fy2": eps_trend_fy2,
         "price_by_offset": price_by_offset,
+        "eps_estimate_currency": eps_estimate_currency,
+        "revenue_estimate_currency": revenue_estimate_currency,
+        "eps_trend_currency": eps_trend_currency,
     }
 
 
@@ -422,6 +456,10 @@ def fetch_stock(symbol):
     currency = f["currency"] or "USD"
     financial_currency = f["financial_currency"] or "USD"
 
+    price_divisor = f["price_divisor"]
+
+    price_raw = price_raw / price_divisor
+
     eps_ttm_raw = f["eps_ttm_raw"]
     fy0_raw, fy1_raw, fy2_raw = f["fy0_raw"], f["fy1_raw"], f["fy2_raw"]
     fy_end = f["fy_end"]
@@ -431,14 +469,36 @@ def fetch_stock(symbol):
     eps_history, rev_history = f["eps_history"], f["rev_history"]
     eps_trend_fy2 = f["eps_trend_fy2"]
 
+    eps_estimate_rate = rate_to_financial_currency(f["eps_estimate_currency"], currency, financial_currency, fx_rate)
+    revenue_estimate_rate = rate_to_financial_currency(f["revenue_estimate_currency"], currency, financial_currency, fx_rate)
+    eps_trend_rate = rate_to_financial_currency(f["eps_trend_currency"], currency, financial_currency, fx_rate)
+
+    fy0_raw = fy0_raw * eps_estimate_rate if fy0_raw is not None else None
+    fy1_raw = fy1_raw * eps_estimate_rate if fy1_raw is not None else None
+    fy2_raw = fy2_raw * eps_estimate_rate if fy2_raw is not None else None
+
+    rev_fy0_raw = rev_fy0_raw * revenue_estimate_rate if rev_fy0_raw is not None else None
+    rev_fy1_raw = rev_fy1_raw * revenue_estimate_rate if rev_fy1_raw is not None else None
+    rev_fy2_raw = rev_fy2_raw * revenue_estimate_rate if rev_fy2_raw is not None else None
+
+    eps_trend_fy2 = {
+        k: (v * eps_trend_rate if v is not None else None)
+        for k, v in eps_trend_fy2.items()
+    }
+
     price_converted = price_raw * fx_rate
     market_cap_converted = market_cap_raw * fx_rate if market_cap_raw is not None else None
+    eps_ttm_converted = eps_ttm_raw * fx_rate if eps_ttm_raw is not None else None
 
     # Use a fresh copy of the cached historical prices, but swap in today's
     # live price so that one bar always reflects the price we just fetched, 
     # not a stale fundamentals-cache price. Then convert every point into the 
     # financials' currency
     price_by_offset = dict(f["price_by_offset"])
+    price_by_offset = {
+        off: (p / price_divisor if p is not None else None)
+        for off, p in price_by_offset.items()
+    }
     price_by_offset[0] = price_raw
     price_by_offset = {
         off: (p * fx_rate if p is not None else None)
@@ -483,7 +543,7 @@ def fetch_stock(symbol):
 
         # P/E table (formatted)
         "price": fmt_price(price_raw, currency),
-        "pe_ttm": fmt_pe(price_converted, eps_ttm_raw),
+        "pe_ttm": fmt_pe(price_converted, eps_ttm_converted),
         "pe_fy0": fmt_pe(price_converted, fy0_raw),
         "pe_fy1": fmt_pe(price_converted, fy1_raw),
         "pe_fy2": fmt_pe(price_converted, fy2_raw),
@@ -495,7 +555,7 @@ def fetch_stock(symbol):
 
         # EPS table (formatted)
         "fy_end": fy_end,
-        "eps_ttm": fmt_eps(eps_ttm_raw, financial_currency),
+        "eps_ttm": fmt_eps(eps_ttm_converted, financial_currency),
         "eps_fy0": fmt_eps(fy0_raw, financial_currency),
         "eps_fy1": fmt_eps(fy1_raw, financial_currency),
         "eps_fy2": fmt_eps(fy2_raw, financial_currency),
