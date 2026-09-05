@@ -43,12 +43,11 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
-                    <th>Currency</th>
                     <th>Price</th>
                     <th title="Price ÷ trailing 12-month EPS">P/E TTM</th>
                     <th title="Price ÷ prior fiscal year EPS (Year Ago EPS)">P/E FY0</th>
-                    <th title="Price ÷ current fiscal year consensus EPS estimate">P/E FY1</th>
-                    <th title="Price ÷ next fiscal year consensus EPS estimate">P/E FY2</th>
+                    <th title="Price ÷ current fiscal year consensus normalized EPS estimate">P/E FY1</th>
+                    <th title="Price ÷ next fiscal year consensus normalized EPS estimate">P/E FY2</th>
                     <th title="2-year EPS CAGR from FY0 to FY2. N/A when FY0 EPS is zero or negative.">EPS Growth</th>
                 </tr>
             </thead>
@@ -59,7 +58,6 @@
                         <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('pe-{{ stock.symbol }}')">{{ stock.symbol }}</a>
                     </td>
                     <td class="name">{{ stock.name }}</td>
-                    <td>{{ stock.currency_label }}</td>
                     <td class="num">{{ stock.price }}</td>
                     <td class="num">{{ stock.pe_ttm }}</td>
                     <td class="num">{{ stock.pe_fy0 }}</td>
@@ -68,10 +66,10 @@
                     <td class="num">{{ stock.eps_growth }}</td>
                 </tr>
                 <tr id="pe-{{ stock.symbol }}-row" class="history-row" style="display: none;">
-                    <td colspan="9">
+                    <td colspan="8">
                         <div class="history-charts">
                             <div class="history-chart-block">
-                                <h3 title="Price ÷ next fiscal year (FY2) consensus EPS estimate">Forward P/E Trend (90-Day)</h3>
+                                <h3 title="Based on normalized analyst EPS estimates">Forward P/E Trend (90-Day)</h3>
                                 <div class="chart-wrap small">
                                     <canvas id="pe-{{ stock.symbol }}-pe-trend"></canvas>
                                 </div>
@@ -92,12 +90,11 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
-                    <th>Currency</th>
                     <th>FY End</th>
                     <th title="Diluted EPS for the trailing 12 months">EPS TTM</th>
                     <th title="Actual diluted EPS for the prior fiscal year">EPS FY0</th>
-                    <th title="Analyst consensus EPS estimate for the current fiscal year">EPS FY1</th>
-                    <th title="Analyst consensus EPS estimate for next fiscal year">EPS FY2</th>
+                    <th title="Analyst consensus normalized EPS estimate for the current fiscal year">EPS FY1</th>
+                    <th title="Analyst consensus normalized EPS estimate for next fiscal year">EPS FY2</th>
                 </tr>
             </thead>
             <tbody>
@@ -107,7 +104,6 @@
                         <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('eps-{{ stock.symbol }}')">{{ stock.symbol }}</a>
                     </td>
                     <td class="name">{{ stock.name }}</td>
-                    <td>{{ stock.currency_label }}</td>
                     <td class="num">{{ stock.fy_end }}</td>
                     <td class="num">{{ stock.eps_ttm }}</td>
                     <td class="num">{{ stock.eps_fy0 }}</td>
@@ -115,7 +111,7 @@
                     <td class="num">{{ stock.eps_fy2 }}</td>
                 </tr>
                 <tr id="eps-{{ stock.symbol }}-row" class="history-row" style="display: none;">
-                    <td colspan="8">
+                    <td colspan="7">
                         <div class="history-charts">
                             <div class="history-chart-block">
                                 <h3>EPS — Actual vs. Estimate</h3>
@@ -329,12 +325,13 @@
             }
 
             function formatAxisNumber(v) {
+                const currency = hist.currency || 'USD';
                 const abs = Math.abs(v);
-                if (abs >= 1e12) return '$' + (v / 1e12).toFixed(1) + 'T';
-                if (abs >= 1e9)  return '$' + (v / 1e9).toFixed(1) + 'B';
-                if (abs >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
-                if (abs >= 1e3)  return '$' + (v / 1e3).toFixed(1) + 'K';
-                return '$' + v.toFixed(2);
+                if (abs >= 1e12) return currency + ' ' + (v / 1e12).toFixed(1) + 'T';
+                if (abs >= 1e9)  return currency + ' ' + (v / 1e9).toFixed(1) + 'B';
+                if (abs >= 1e6)  return currency + ' ' + (v / 1e6).toFixed(1) + 'M';
+                if (abs >= 1e3)  return currency + ' ' + (v / 1e3).toFixed(1) + 'K';
+                return currency + ' ' + v.toFixed(2);
             }
 
             function makeChart(canvasId, values, label, histCagr, fwdCagr, isCurrency) {

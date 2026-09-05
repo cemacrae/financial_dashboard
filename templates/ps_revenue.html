@@ -42,9 +42,8 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
-                    <th>Currency</th>
                     <th>Price</th>
-                    <th title="Price ÷ trailing 12-month revenue per share">P/S TTM</th>
+                    <th title="Trailing 12-month market capitalization">MCap TTM</th>
                     <th title="Market cap ÷ prior fiscal year revenue (Year Ago Revenue)">MCap / Rev FY0</th>
                     <th title="Market cap ÷ current fiscal year consensus revenue estimate">MCap / Rev FY1</th>
                     <th title="Market cap ÷ next fiscal year consensus revenue estimate">MCap / Rev FY2</th>
@@ -58,16 +57,15 @@
                         <a href="javascript:void(0)" class="symbol-toggle" onclick="toggleHistory('ps-{{ stock.symbol }}')">{{ stock.symbol }}</a>
                     </td>
                     <td class="name">{{ stock.name }}</td>
-                    <td>{{ stock.currency_label }}</td>
                     <td class="num">{{ stock.price }}</td>
-                    <td class="num">{{ stock.ps_ttm }}</td>
+                    <td class="num">{{ stock.market_cap_ttm }}</td>
                     <td class="num">{{ stock.ps_fy0 }}</td>
                     <td class="num">{{ stock.ps_fy1 }}</td>
                     <td class="num">{{ stock.ps_fy2 }}</td>
                     <td class="num">{{ stock.rev_growth }}</td>
                 </tr>
                 <tr id="ps-{{ stock.symbol }}-row" class="history-row" style="display: none;">
-                    <td colspan="8">
+                    <td colspan="7">
                         <div class="history-charts">
                             <div class="history-chart-block">
                                 <h3>Revenue — Actual vs. Estimate</h3>
@@ -282,12 +280,13 @@
             }
 
             function formatAxisNumber(v) {
+                const currency = hist.currency || 'USD';
                 const abs = Math.abs(v);
-                if (abs >= 1e12) return '$' + (v / 1e12).toFixed(1) + 'T';
-                if (abs >= 1e9)  return '$' + (v / 1e9).toFixed(1) + 'B';
-                if (abs >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
-                if (abs >= 1e3)  return '$' + (v / 1e3).toFixed(1) + 'K';
-                return '$' + v.toFixed(2);
+                if (abs >= 1e12) return currency + ' ' + (v / 1e12).toFixed(1) + 'T';
+                if (abs >= 1e9)  return currency + ' ' + (v / 1e9).toFixed(1) + 'B';
+                if (abs >= 1e6)  return currency + ' ' + (v / 1e6).toFixed(1) + 'M';
+                if (abs >= 1e3)  return currency + ' ' + (v / 1e3).toFixed(1) + 'K';
+                return currency + ' ' + v.toFixed(2);
             }
 
             function makeChart(canvasId, values, label, histCagr, fwdCagr, isCurrency) {

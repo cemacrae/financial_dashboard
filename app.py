@@ -6,20 +6,20 @@ import pandas as pd
 import yfinance as yf
 
 
-def fmt_price(value):
+def fmt_price(value, currency="USD"):
     if value is None:
         return "N/A"
     try:
-        return f"${float(value):,.2f}"
+        return f"{currency} {float(value):,.2f}"
     except (TypeError, ValueError):
         return "N/A"
 
 
-def fmt_eps(value):
+def fmt_eps(value, currency="USD"):
     if value is None:
         return "N/A"
     try:
-        return f"${float(value):.2f}"
+        return f"{currency} {float(value):.2f}"
     except (TypeError, ValueError):
         return "N/A"
 
@@ -114,6 +114,25 @@ def raw_ps(market_cap, revenue):
         return round(m / r, 2)
     except (TypeError, ValueError):
         return None
+
+def fmt_market_cap(value, currency="USD"):
+    """Format market cap with its currency, compacted e.g. 'USD 3.24T'."""
+    if value is None:
+        return "N/A"
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    abs_v = abs(v)
+    if abs_v >= 1e12:
+        compact = f"{v / 1e12:.2f}T"
+    elif abs_v >= 1e9:
+        compact = f"{v / 1e9:.2f}B"
+    elif abs_v >= 1e6:
+        compact = f"{v / 1e6:.2f}M"
+    else:
+        compact = f"{v:,.0f}"
+    return f"{currency} {compact}"
 
 
 def fetch_fy_end_date(ticker):
@@ -400,13 +419,8 @@ def fetch_stock(symbol):
         )
 
     fx_rate = f["fx_rate"]
-    currency = f["currency"]
-    financial_currency = f["financial_currency"]
-
-    if currency and financial_currency and currency != financial_currency:
-        currency_label = f"{currency} → {financial_currency}"
-    else:
-        currency_label = financial_currency or currency or "N/A"
+    currency = f["currency"] or "USD"
+    financial_currency = f["financial_currency"] or "USD"
 
     eps_ttm_raw = f["eps_ttm_raw"]
     fy0_raw, fy1_raw, fy2_raw = f["fy0_raw"], f["fy1_raw"], f["fy2_raw"]
@@ -451,6 +465,7 @@ def fetch_stock(symbol):
 
     history_payload = {
         "labels": ["FY-3", "FY-2", "FY-1", "FY0", "FY1", "FY2"],
+        "currency": financial_currency,
         "eps": eps_series,
         "revenue": rev_series,
         "epsHistCagr": eps_hist_cagr,
@@ -465,10 +480,9 @@ def fetch_stock(symbol):
         # Identifiers
         "symbol": symbol,
         "name": f["name"],
-        "currency_label": currency_label,
 
         # P/E table (formatted)
-        "price": fmt_price(price_raw),
+        "price": fmt_price(price_raw, currency),
         "pe_ttm": fmt_pe(price_converted, eps_ttm_raw),
         "pe_fy0": fmt_pe(price_converted, fy0_raw),
         "pe_fy1": fmt_pe(price_converted, fy1_raw),
@@ -481,13 +495,13 @@ def fetch_stock(symbol):
 
         # EPS table (formatted)
         "fy_end": fy_end,
-        "eps_ttm": fmt_eps(eps_ttm_raw),
-        "eps_fy0": fmt_eps(fy0_raw),
-        "eps_fy1": fmt_eps(fy1_raw),
-        "eps_fy2": fmt_eps(fy2_raw),
+        "eps_ttm": fmt_eps(eps_ttm_raw, financial_currency),
+        "eps_fy0": fmt_eps(fy0_raw, financial_currency),
+        "eps_fy1": fmt_eps(fy1_raw, financial_currency),
+        "eps_fy2": fmt_eps(fy2_raw, financial_currency),
 
         # P/S table (formatted)
-        "ps_ttm": fmt_ratio(ps_ttm_raw),
+        "market_cap_ttm": fmt_market_cap(market_cap_converted, financial_currency),
         "ps_fy0": fmt_ps(market_cap_converted, rev_fy0_raw),
         "ps_fy1": fmt_ps(market_cap_converted, rev_fy1_raw),
         "ps_fy2": fmt_ps(market_cap_converted, rev_fy2_raw),
