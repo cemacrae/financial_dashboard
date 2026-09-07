@@ -588,7 +588,7 @@ def fetch_stock(symbol):
 
 @app.route("/")
 def home():
-    symbols_input = request.args.get("symbols", "AAPL,MSFT,GOOGL")
+    symbols_input = request.args.get("symbols", "GOOGL")
     symbols = [s.strip().upper() for s in symbols_input.split(",")]
 
     stocks = []
@@ -625,7 +625,7 @@ def home():
 
 @app.route("/ps-revenue")
 def ps_revenue():
-    symbols_input = request.args.get("symbols", "AAPL,MSFT,GOOGL")
+    symbols_input = request.args.get("symbols", "GOOGL")
     symbols = [s.strip().upper() for s in symbols_input.split(",")]
 
     stocks = []
