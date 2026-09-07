@@ -20,7 +20,6 @@ The dashboard has two tabs, both connected by the same user ticker input:
 - Tiered caching — live price data is cached briefly (worth refreshing often), while slower-moving fundamentals (EPS/revenue estimates, historicals) are cached for hours, balancing data recency and the rate limits set by the free data source.
 
 **Limitations:**
-- Forward EPS/revenue figures reflect Yahoo Finance's normalized (non-GAAP) analyst consensus, since GAAP-basis forward estimates aren't exposed through the public data this app relies on.
 - This app's accuracy is limited by Yahoo Finance's own data quality. Beyond the mismatches handled above, Yahoo is occasionally inconsistent by reporting data in different currencies, causing possible discrepancies in case of foreign listings and ADRs.
 
 ## How to Open

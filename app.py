@@ -4,6 +4,7 @@ from flask import Flask, render_template, request
 from flask_caching import Cache
 import pandas as pd
 import yfinance as yf
+from yfinance.scrapers.quote import _QUOTE_SUMMARY_URL_
 
 
 def fmt_price(value, currency="USD"):
@@ -14,7 +15,6 @@ def fmt_price(value, currency="USD"):
     except (TypeError, ValueError):
         return "N/A"
 
-
 def fmt_eps(value, currency="USD"):
     if value is None:
         return "N/A"
@@ -22,7 +22,6 @@ def fmt_eps(value, currency="USD"):
         return f"{currency} {float(value):.2f}"
     except (TypeError, ValueError):
         return "N/A"
-
 
 def fmt_ratio(value, decimals=1):
     """Format a pre-calculated ratio as e.g. 7.3x. N/A if missing or non-positive."""
@@ -36,7 +35,6 @@ def fmt_ratio(value, decimals=1):
     except (TypeError, ValueError):
         return "N/A"
 
-
 def fmt_pe(price, eps):
     """Price / EPS, shown as e.g. 28.4x. N/A if eps is zero, negative, or missing."""
     if price is None or eps is None:
@@ -49,7 +47,6 @@ def fmt_pe(price, eps):
     except (TypeError, ValueError):
         return "N/A"
 
-
 def raw_pe(price, eps):
     """Raw float P/E for chart use. None if eps is zero, negative, or missing."""
     if price is None or eps is None:
@@ -61,7 +58,6 @@ def raw_pe(price, eps):
         return round(p / e, 2)
     except (TypeError, ValueError):
         return None
-
 
 def fmt_cagr(fy0, fy2, years=2):
     """CAGR from FY0 to FY2. N/A if either value is missing or FY0 <= 0."""
@@ -76,7 +72,6 @@ def fmt_cagr(fy0, fy2, years=2):
     except (TypeError, ValueError, ZeroDivisionError):
         return "N/A"
 
-
 def raw_cagr(fy0, fy2, years=2):
     """Raw float CAGR (as a percentage, e.g. 12.5) for chart use. None if invalid."""
     if fy0 is None or fy2 is None:
@@ -89,7 +84,6 @@ def raw_cagr(fy0, fy2, years=2):
     except (TypeError, ValueError, ZeroDivisionError):
         return None
 
-
 def fmt_ps(market_cap, revenue):
     """Market cap / revenue, shown as e.g. 7.3x. N/A if revenue is zero, negative, or missing."""
     if market_cap is None or revenue is None:
@@ -101,7 +95,6 @@ def fmt_ps(market_cap, revenue):
         return f"{m / r:.1f}x"
     except (TypeError, ValueError):
         return "N/A"
-
 
 def raw_ps(market_cap, revenue):
     """Raw float P/S for chart use. None if revenue is zero, negative, or missing."""
@@ -146,7 +139,6 @@ def normalize_currency(currency):
         return "GBP", 100.0
     return currency, 1.0
 
-
 def fetch_fy_end_date(ticker):
     """Most recent fiscal year-end date as e.g. '1/31/2026'."""
     try:
@@ -157,65 +149,60 @@ def fetch_fy_end_date(ticker):
         pass
     return "N/A"
 
-
-def fetch_earnings_estimates(ticker):
+def fetch_earnings_estimates(ticker, trend=None):
     """
-    Returns (fy0_year_ago_eps, fy1_avg_eps, fy2_avg_eps) as raw floats or None.
-    earnings_estimate index: 0q, +1q, 0y, +1y
-    columns: numberOfAnalysts, avg, low, high, yearAgoEps, growth
+    Returns (fy0_year_ago_eps, fy1_avg_eps, fy2_avg_eps, currency) as raw
+    floats or None, from GAAP-basis earnings estimates.
     """
-    try:
-        ee = ticker.earnings_estimate
-        if ee is None or ee.empty:
-            return None, None, None, None
+    if trend is None:
+        trend = fetch_earnings_trend_gaap(ticker)
 
-        def safe(row, col):
-            try:
-                v = ee.loc[row, col]
-                return float(v) if v is not None and not math.isnan(float(v)) else None
-            except Exception:
-                return None
+    def safe(period, key):
+        item = _find_period(trend, period)
+        if not item:
+            return None
+        try:
+            v = item.get("earningsEstimate", {}).get(key, {}).get("raw")
+            return float(v) if v is not None and not math.isnan(float(v)) else None
+        except Exception:
+            return None
 
-        currency = ee["currency"].iloc[0] if "currency" in ee.columns else None
+    item_0y = _find_period(trend, "0y")
+    currency = item_0y.get("earningsEstimate", {}).get("earningsCurrency") if item_0y else None
 
-        return (
-            safe("0y", "yearAgoEps"),
-            safe("0y", "avg"),
-            safe("+1y", "avg"),
-            currency,
-        )
-    except Exception:
-        return None, None, None, None
+    return (
+        safe("0y", "yearAgoEps"),
+        safe("0y", "avg"),
+        safe("+1y", "avg"),
+        currency,
+    )
 
-
-def fetch_revenue_estimates(ticker):
+def fetch_revenue_estimates(ticker, trend=None):
     """
-    Returns (rev_fy0, rev_fy1, rev_fy2) as raw floats (dollars) or None.
-    revenue_estimate index: 0q, +1q, 0y, +1y
-    columns: numberOfAnalysts, avg, low, high, yearAgoRevenue, growth
+    Returns (rev_fy0, rev_fy1, rev_fy2) as raw floats or None.
     """
-    try:
-        re = ticker.revenue_estimate
-        if re is None or re.empty:
-            return None, None, None, None
+    if trend is None:
+        trend = fetch_earnings_trend_gaap(ticker)
 
-        def safe(row, col):
-            try:
-                v = re.loc[row, col]
-                return float(v) if v is not None and not math.isnan(float(v)) else None
-            except Exception:
-                return None
+    def safe(period, key):
+        item = _find_period(trend, period)
+        if not item:
+            return None
+        try:
+            v = item.get("revenueEstimate", {}).get(key, {}).get("raw")
+            return float(v) if v is not None and not math.isnan(float(v)) else None
+        except Exception:
+            return None
 
-        currency = re["currency"].iloc[0] if "currency" in re.columns else None
+    item_0y = _find_period(trend, "0y")
+    currency = item_0y.get("revenueEstimate", {}).get("revenueCurrency") if item_0y else None
 
-        return (
-            safe("0y", "yearAgoRevenue"),
-            safe("0y", "avg"),
-            safe("+1y", "avg"),
-            currency,
-        )
-    except Exception:
-        return None, None, None, None
+    return (
+        safe("0y", "yearAgoRevenue"),
+        safe("0y", "avg"),
+        safe("+1y", "avg"),
+        currency,
+    )
 
 def fetch_historical_financials(ticker):
     """
@@ -250,36 +237,35 @@ def fetch_historical_financials(ticker):
     except Exception:
         return [None, None, None, None], [None, None, None, None]
 
-
 def history_cagr(start_value, end_value, years):
     """Same math as raw_cagr but named for clarity when used on historical arrays."""
     return raw_cagr(start_value, end_value, years)
 
-def fetch_eps_trend_fy2(ticker):
+def fetch_eps_trend_fy2(ticker, trend=None):
     """
     Returns dict with keys current, 7daysAgo, 30daysAgo, 60daysAgo, 90daysAgo
-    (raw EPS floats or None), pulled from the '+1y' (next fiscal year) row of
-    the EPS Trend table on Yahoo Finance's Analysis tab.
+    (raw GAAP EPS floats or None) plus the currency, pulled from the '+1y'
+    row of the GAAP-basis EPS Trend data.
     """
     keys = ["current", "7daysAgo", "30daysAgo", "60daysAgo", "90daysAgo"]
-    try:
-        trend = ticker.eps_trend
-        if trend is None or trend.empty or "+1y" not in trend.index:
-            return {k: None for k in keys}, None
+    if trend is None:
+        trend = fetch_earnings_trend_gaap(ticker)
 
-        def safe(col):
-            try:
-                v = trend.loc["+1y", col]
-                return float(v) if v is not None and not math.isnan(float(v)) else None
-            except Exception:
-                return None
-
-        currency = trend["currency"].iloc[0] if "currency" in trend.columns else None
-
-        return {k: safe(k) for k in keys}, currency
-    except Exception:
+    item = _find_period(trend, "+1y")
+    if not item:
         return {k: None for k in keys}, None
 
+    eps_trend = item.get("epsTrend", {})
+
+    def safe(key):
+        try:
+            v = eps_trend.get(key, {}).get("raw")
+            return float(v) if v is not None and not math.isnan(float(v)) else None
+        except Exception:
+            return None
+
+    currency = eps_trend.get("epsTrendCurrency")
+    return {k: safe(k) for k in keys}, currency
 
 def fetch_price_days_ago(ticker, days_back=(0, 7, 30, 60, 90)):
     """
@@ -319,6 +305,29 @@ def rate_to_financial_currency(quote_currency, trading_currency, financial_curre
     if quote_currency == trading_currency:
         return trading_fx_rate
     return fetch_exchange_rate(quote_currency, financial_currency) or 1.0
+
+def fetch_earnings_trend_gaap(ticker):
+    """
+    Returns the raw 'trend' list (one dict per period:
+    '0q', '+1q', '0y', '+1y'), or an empty list on failure.
+    """
+    try:
+        params = {
+            "modules": "earningsTrendGaap",
+            "corsDomain": "finance.yahoo.com",
+            "formatted": "false",
+            "symbol": ticker.ticker,
+        }
+        data = ticker._data.get_raw_json(f"{_QUOTE_SUMMARY_URL_}/{ticker.ticker}", params=params)
+        return data["quoteSummary"]["result"][0]["earningsTrendGaap"]["trend"]
+    except Exception:
+        return []
+
+def _find_period(trend, period):
+    for item in trend:
+        if item.get("period") == period:
+            return item
+    return None
 
 
 app = Flask(__name__)
@@ -400,14 +409,15 @@ def fetch_fundamentals(symbol):
     
     eps_ttm_raw = info.get("trailingEps")
 
-    fy0_raw, fy1_raw, fy2_raw, eps_estimate_currency = fetch_earnings_estimates(ticker)
+    trend = fetch_earnings_trend_gaap(ticker)
+    fy0_raw, fy1_raw, fy2_raw, eps_estimate_currency = fetch_earnings_estimates(ticker, trend)
     fy_end = fetch_fy_end_date(ticker)
-    rev_fy0_raw, rev_fy1_raw, rev_fy2_raw, revenue_estimate_currency = fetch_revenue_estimates(ticker)
+    rev_fy0_raw, rev_fy1_raw, rev_fy2_raw, revenue_estimate_currency = fetch_revenue_estimates(ticker, trend)
     market_cap_raw = info.get("marketCap")
     ps_ttm_raw = info.get("priceToSalesTrailing12Months")
 
     eps_history, rev_history = fetch_historical_financials(ticker)
-    eps_trend_fy2, eps_trend_currency = fetch_eps_trend_fy2(ticker)
+    eps_trend_fy2, eps_trend_currency = fetch_eps_trend_fy2(ticker, trend)
     price_by_offset = fetch_price_days_ago(ticker)
 
     return {
