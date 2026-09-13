@@ -23,10 +23,7 @@ The dashboard has two tabs, both connected by the same user ticker input:
 - This app's accuracy is limited by Yahoo Finance's own data quality. Beyond the mismatches handled above, Yahoo is occasionally inconsistent by reporting data in different currencies, causing possible discrepancies in case of foreign listings and ADRs.
 
 ## How to Open
-**Live demo:** [financial_dashboard](https://financial-dashboard-53fy.onrender.com)
-The app is hosted on a free tier, which sleeps after 15 minutes of inactivity — the first load after a quiet period can take up to 60 seconds to wake up.
-
-**If the link doesn't load:** the data source - Yahoo Financen (`yfinance`) - occasionally rate-limits shared hosting IPs, which can make the live demo unavailable. If that happens, run it locally instead — local connections aren't subject to the same rate limiting:
+Clone the repo, install dependencies, and run it locally:
 
 ```bash
 git clone https://github.com/cemacrae/financial_dashboard.git
