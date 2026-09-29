@@ -65,7 +65,7 @@ Group averages: MCap/Rev FY0 ≈ 12.4x, Revenue Growth ≈ 26.3%. Unlike the P/E
 ### Retail
 **P/E vs. EPS Growth**
 
-![Retail P/E and EPS table](screenshots/retail-PE&EPS_table)
+![Retail P/E and EPS table](screenshots/retail-PE&EPS_table.png)
 
 ![Retail P/E FY0 vs. EPS Growth chart](screenshots/retail-PE_FY0_vs._EPS_Growth_chart.png)
 
