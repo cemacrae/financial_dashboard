@@ -529,9 +529,9 @@ def fetch_stock(symbol):
     rev_series = rev_history + [rev_fy1_raw, rev_fy2_raw]
 
     eps_hist_cagr = history_cagr(eps_history[0], eps_history[3], 3)
-    eps_fwd_cagr = history_cagr(eps_history[3], fy2_raw, 2)
+    eps_fwd_cagr = history_cagr(fy0_raw, fy2_raw, 2)
     rev_hist_cagr = history_cagr(rev_history[0], rev_history[3], 3)
-    rev_fwd_cagr = history_cagr(rev_history[3], rev_fy2_raw, 2)
+    rev_fwd_cagr = history_cagr(rev_fy0_raw, rev_fy2_raw, 2)
 
     history_payload = {
         "labels": ["FY-3", "FY-2", "FY-1", "FY0", "FY1", "FY2"],
